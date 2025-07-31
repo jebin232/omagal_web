@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from "react";
 
-const SIGNALING_SERVER_URL = "ws://omagal-web.onrender.com"; // ✅ For local testing
+const SIGNALING_SERVER_URL = "ws://bd8d51e8e7f5.ngrok-free.app"; // ✅ For local testing
 // Use wss://yourdomain.com:PORT in production with secure cert
 
 const configuration = {
