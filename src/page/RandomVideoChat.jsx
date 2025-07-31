@@ -79,7 +79,7 @@ export default function RandomVideoChat() {
   // === Start Call ===
   const handleStart = async () => {
     setStatus("Connecting...");
-    const ws = new WebSocket("https://bd8d51e8e7f5.ngrok-free.app");
+    const ws = new WebSocket("wss://bd8d51e8e7f5.ngrok-free.app");
     setSocket(ws);
 
     const stream = await navigator.mediaDevices.getUserMedia({
