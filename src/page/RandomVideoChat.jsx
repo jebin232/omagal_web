@@ -1,201 +1,151 @@
+// RandomVideoChat.jsx
 import React, { useEffect, useRef, useState } from "react";
-import "./RandomVideoChat.css";
+
+const SIGNALING_SERVER =
+  window.location.protocol === "https:"
+    ? "wss://bd8d51e8e7f5.ngrok-free.app"
+    : "ws://localhost:3001";
+
+let pcConfig = {
+  iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
+};
 
 export default function RandomVideoChat() {
-  const localVideoRef = useRef(null);
-  const remoteVideoRef = useRef(null);
-  const [status, setStatus] = useState("Click Start to begin...");
-  const [connected, setConnected] = useState(false);
+  const [status, setStatus] = useState("Click Start to begin");
   const [socket, setSocket] = useState(null);
-  const peerRef = useRef(null);
-  const localStreamRef = useRef(null);
+  const localVideoRef = useRef();
+  const remoteVideoRef = useRef();
+  const pcRef = useRef();
+  const localStreamRef = useRef();
 
-  const STUN_SERVERS = {
-    iceServers: [
-      { urls: "stun:stun.l.google.com:19302" }
-    ]
-  };
+  useEffect(() => {
+    const ws = new WebSocket(SIGNALING_SERVER);
+    setSocket(ws);
+
+    ws.onmessage = async (message) => {
+      const data = JSON.parse(message.data);
+      switch (data.type) {
+        case "status":
+          setStatus(data.message);
+          break;
+        case "partner-found":
+          setStatus("Partner found, connecting...");
+          await makeCall();
+          break;
+        case "signal":
+          await handleSignal(data.data);
+          break;
+        case "partner-left":
+          setStatus("Partner left. Click 'Next' to connect to someone new.");
+          remoteVideoRef.current.srcObject = null;
+          pcRef.current?.close();
+          break;
+        default:
+          break;
+      }
+    };
+
+    return () => {
+      ws.close();
+    };
+  }, []);
 
   const handleStart = async () => {
     try {
-      setStatus("Requesting media...");
-
-      const stream = await navigator.mediaDevices.getUserMedia({
+      const localStream = await navigator.mediaDevices.getUserMedia({
         video: true,
-        audio: true
+        audio: true,
       });
-
-      localStreamRef.current = stream;
-      if (localVideoRef.current) {
-        localVideoRef.current.srcObject = stream;
-      }
-
-      // Use wss:// in production
-      const ws = new WebSocket("ws://bd8d51e8e7f5.ngrok-free.app");
-      setSocket(ws);
-
-      ws.onopen = () => {
-        ws.send(JSON.stringify({ type: "join" }));
-        setStatus("Waiting for partner...");
-        setConnected(true);
-      };
-
-      ws.onmessage = async (msg) => {
-        const data = JSON.parse(msg.data);
-
-        if (data.type === "partner-found") {
-          setStatus("Partner found! Connecting...");
-
-          peerRef.current = createPeer(ws, true);
-          localStreamRef.current.getTracks().forEach(track => {
-            peerRef.current.addTrack(track, localStreamRef.current);
-          });
-        }
-
-        if (data.type === "signal" && peerRef.current) {
-          if (data.data.sdp) {
-            await peerRef.current.setRemoteDescription(
-              new RTCSessionDescription(data.data.sdp)
-            );
-            if (data.data.sdp.type === "offer") {
-              const answer = await peerRef.current.createAnswer();
-              await peerRef.current.setLocalDescription(answer);
-              ws.send(JSON.stringify({
-                type: "signal",
-                data: { sdp: peerRef.current.localDescription }
-              }));
-            }
-          } else if (data.data.candidate) {
-            try {
-              await peerRef.current.addIceCandidate(
-                new RTCIceCandidate(data.data.candidate)
-              );
-            } catch (err) {
-              console.error("ICE candidate error:", err);
-            }
-          }
-        }
-
-        if (data.type === "partner-left") {
-          setStatus("Partner disconnected.");
-          closePeer();
-        }
-
-        if (data.type === "status") {
-          setStatus(data.message);
-        }
-      };
-
-      ws.onclose = () => {
-        setStatus("Disconnected from server.");
-        setConnected(false);
-        closePeer();
-      };
+      localVideoRef.current.srcObject = localStream;
+      localStreamRef.current = localStream;
     } catch (err) {
-      console.error("Error starting video chat:", err);
-      setStatus("Failed to access media devices.");
+      alert("Failed to get user media: " + err);
+      return;
+    }
+    setStatus("Connecting to signaling server...");
+  };
+
+  const makeCall = async () => {
+    pcRef.current = new RTCPeerConnection(pcConfig);
+
+    localStreamRef.current.getTracks().forEach((track) => {
+      pcRef.current.addTrack(track, localStreamRef.current);
+    });
+
+    pcRef.current.ontrack = (event) => {
+      remoteVideoRef.current.srcObject = event.streams[0];
+    };
+
+    pcRef.current.onicecandidate = (event) => {
+      if (event.candidate) {
+        socket.send(
+          JSON.stringify({
+            type: "signal",
+            data: { candidate: event.candidate },
+          })
+        );
+      }
+    };
+
+    const offer = await pcRef.current.createOffer();
+    await pcRef.current.setLocalDescription(offer);
+
+    socket.send(
+      JSON.stringify({
+        type: "signal",
+        data: { sdp: offer },
+      })
+    );
+  };
+
+  const handleSignal = async (data) => {
+    if (data.sdp) {
+      await pcRef.current.setRemoteDescription(new RTCSessionDescription(data.sdp));
+      if (data.sdp.type === "offer") {
+        const answer = await pcRef.current.createAnswer();
+        await pcRef.current.setLocalDescription(answer);
+        socket.send(
+          JSON.stringify({
+            type: "signal",
+            data: { sdp: answer },
+          })
+        );
+      }
+    } else if (data.candidate) {
+      await pcRef.current.addIceCandidate(new RTCIceCandidate(data.candidate));
     }
   };
 
   const handleNext = () => {
-    if (socket) {
-      socket.send(JSON.stringify({ type: "next" }));
+    if (pcRef.current) {
+      pcRef.current.close();
     }
+    remoteVideoRef.current.srcObject = null;
+    socket.send(JSON.stringify({ type: "next" }));
     setStatus("Searching for a new partner...");
-    closePeer();
   };
 
   const handleEnd = () => {
-    if (socket) {
-      socket.send(JSON.stringify({ type: "end" }));
+    if (pcRef.current) {
+      pcRef.current.close();
     }
-    closePeer();
+    remoteVideoRef.current.srcObject = null;
+    socket.send(JSON.stringify({ type: "end" }));
     setStatus("Call ended.");
-    setConnected(false);
   };
-
-  const createPeer = (ws, initiator) => {
-    const peer = new RTCPeerConnection(STUN_SERVERS);
-
-    peer.onicecandidate = event => {
-      if (event.candidate) {
-        ws.send(JSON.stringify({
-          type: "signal",
-          data: { candidate: event.candidate }
-        }));
-      }
-    };
-
-    peer.ontrack = event => {
-      if (remoteVideoRef.current && event.streams[0]) {
-        remoteVideoRef.current.srcObject = event.streams[0];
-      }
-    };
-
-    if (initiator) {
-      peer.onnegotiationneeded = async () => {
-        try {
-          const offer = await peer.createOffer();
-          await peer.setLocalDescription(offer);
-          ws.send(JSON.stringify({
-            type: "signal",
-            data: { sdp: offer }
-          }));
-        } catch (err) {
-          console.error("Negotiation error:", err);
-        }
-      };
-    }
-
-    return peer;
-  };
-
-  const closePeer = () => {
-    if (peerRef.current) {
-      peerRef.current.close();
-      peerRef.current = null;
-    }
-    if (remoteVideoRef.current) {
-      remoteVideoRef.current.srcObject = null;
-    }
-  };
-
-  useEffect(() => {
-    return () => {
-      if (socket) socket.close();
-      if (localStreamRef.current) {
-        localStreamRef.current.getTracks().forEach(t => t.stop());
-      }
-      closePeer();
-    };
-  }, []);
 
   return (
-    <div className="chat-container">
-      <h1>Random Video Chat</h1>
-
-      <div className="video-grid">
-        <div className="video-block">
-          <h3>You</h3>
-          <video ref={localVideoRef} autoPlay muted playsInline />
-        </div>
-        <div className="video-block">
-          <h3>Stranger</h3>
-          <video ref={remoteVideoRef} autoPlay playsInline />
-        </div>
+    <div style={{ textAlign: "center", padding: 20 }}>
+      <h2>Random Video Chat</h2>
+      <p>{status}</p>
+      <div>
+        <video ref={localVideoRef} autoPlay muted playsInline width={300} />
+        <video ref={remoteVideoRef} autoPlay playsInline width={300} />
       </div>
-
-      <p className="status">{status}</p>
-
-      <div className="control-buttons">
-        {!connected && <button onClick={handleStart}>Start</button>}
-        {connected && (
-          <>
-            <button onClick={handleNext}>Next</button>
-            <button onClick={handleEnd}>End</button>
-          </>
-        )}
-      </div>
+      <br />
+      <button onClick={handleStart}>Start</button>
+      <button onClick={handleNext}>Next</button>
+      <button onClick={handleEnd}>End</button>
     </div>
   );
 }
