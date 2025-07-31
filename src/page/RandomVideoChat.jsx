@@ -31,7 +31,7 @@ export default function RandomVideoChat() {
       }
 
       // Use wss:// in production
-      const ws = new WebSocket("wss://bd8d51e8e7f5.ngrok-free.app");
+      const ws = new WebSocket("ws://bd8d51e8e7f5.ngrok-free.app");
       setSocket(ws);
 
       ws.onopen = () => {
