@@ -1,0 +1,61 @@
+.chat-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  background: linear-gradient(to bottom right, #1a73e8, #003c8f);
+  min-height: 100vh;
+  color: white;
+  padding-top: 40px;
+  font-family: 'Segoe UI', sans-serif;
+}
+
+h1 {
+  font-size: 2.5rem;
+  margin-bottom: 20px;
+}
+
+.video-grid {
+  display: flex;
+  gap: 30px;
+  margin-bottom: 20px;
+  background: white;
+  padding: 20px;
+  border-radius: 12px;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.2);
+}
+
+.video-block {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  color: black;
+}
+
+video {
+  width: 320px;
+  height: 240px;
+  background-color: #000;
+  border-radius: 10px;
+  margin-top: 10px;
+}
+
+.status {
+  font-size: 1rem;
+  margin: 10px 0;
+}
+
+.control-buttons button {
+  margin: 0 10px;
+  background-color: #4c8bf5;
+  border: none;
+  color: white;
+  padding: 12px 24px;
+  border-radius: 8px;
+  font-size: 1rem;
+  cursor: pointer;
+  transition: background 0.3s;
+}
+
+.control-buttons button:hover {
+  background-color: #2b66d6;
+}
